@@ -15,7 +15,7 @@ Generate thousands of unique building designs using Cellular Automata, then rend
 ## How it works
 
 ```
-         CA Rules                    ControlNet                   GPT-4
+         CA Rules                    ControlNet                  GPT-4.1
             ↓                            ↓                          ↓
 ┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
 │   Voxel Massing  │  →   │  Photorealistic  │  →   │   Architectural  │
@@ -27,7 +27,7 @@ Generate thousands of unique building designs using Cellular Automata, then rend
 
 **2. Render** — SDXL + ControlNet preserves geometry while adding materials and lighting
 
-**3. Describe** — GPT-4 produces architectural descriptions for each design
+**3. Describe** — GPT-4.1 generates architectural descriptions for each design
 
 ---
 
@@ -62,7 +62,7 @@ python describe/analyze.py
 ```
 generate.py       — Rhino script, CA tower generation
 describe/
-  analyze.py      — GPT-4 image → text
+  analyze.py      — GPT-4.1 image → text
   enhance.py      — Stability AI rendering
 output/
   towers/         — geometry + params
