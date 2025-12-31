@@ -1,146 +1,108 @@
-### Update this every week to show report
+# tower-gen
 
-# **Andrei Vince** for Week 2
-- Implemented voxel limit enforcement (`max_voxels_per_tower = 400`) with early stopping
-- Integrated seed-based randomness for reproducibility
-- Created a rule-based prompt classification system:
-  - Describes tower forms based on structure (exemple: "tapered", "fragmented")
-- Generated clean prompt strings for each tower:
+Procedural voxel towers → photorealistic architecture.
 
-2D_CA_tower, fragmented form, b=2, s=2–6, 25 layers
+Generate thousands of unique building designs using Cellular Automata, then render them with diffusion models.
 
-### Prompt Classification Logic
+**[SIGGRAPH Asia 2025 Poster]**
 
-| Condition                                      | Label        |
-| --------------------------------------------- | ------------ |
-| Survive min ≤ 2 and survive max ≥ 6           | fragmented   |
-| Layers ≥ 25 and birth ≥ 3                     | tapered      |
-| Voxel count ≥ 380                             | dense        |
-| Layers ≥ 20 and voxel count < 300             | eroded       |
-| Otherwise                                     | mixed        |
+---
 
-### Example Generated Prompt
+![Generated Variations](docs/100variations.png)
 
-2D_CA_tower, tapered form, b=3, s=2–5, 30 layers
+---
 
-### Example Visual
-![Tower Sample](images/Tower%20Sample%20Week%202.png)
+## How it works
 
-# **Aidan** for Week 2
-<<<<<<< HEAD
-
-- Implemented a recursive Python script (`branchingTree.py`) in Rhino to generate a branching tree structure
-- Used `rhinoscriptsyntax` to construct bifurcating branches using vector rotation and scaling
-- Introduced parameters for angle, depth, and scaling ratio to control the fractal-like tree generation
-- Explored variations in recursion depth to visualize structural complexity
-
-### Example Visual
-![Sample 1](images/branch1.png)
-![Sample 2](images/branch2.png)
-![Sample 3](images/branch3.png)
-
-### Example Script Snippet
-
-
-```python
-def draw_branch(start_point, direction, length, angle, depth):
-    if depth == 0:
-        return
-
-    end_point = rs.PointAdd(start_point, rs.VectorScale(direction, length))
-    rs.AddLine(start_point, end_point)
-
-    vec1 = rs.VectorRotate(direction, angle, [0, 0, 1])
-    vec2 = rs.VectorRotate(direction, -angle, [0, 0, 1])
-
-    draw_branch(end_point, vec1, length * 0.7, angle, depth - 1)
-    draw_branch(end_point, vec2, length * 0.7, angle, depth - 1)
-
-
-=======
->>>>>>> ff7b1e69a90fcfeeee82417789ed9da2f68afbba
+```
+         CA Rules                    ControlNet                   GPT-4
+            ↓                            ↓                          ↓
+┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
+│   Voxel Massing  │  →   │  Photorealistic  │  →   │   Architectural  │
+│                  │      │    Rendering     │      │   Description    │
+└──────────────────┘      └──────────────────┘      └──────────────────┘
 ```
 
-# **Andrei Vince – Week 3 Update**
+**1. Generate** — 3D Cellular Automata creates tower forms with configurable birth/survival rules
 
-### ✅ Summary of Progress
+**2. Render** — SDXL + ControlNet preserves geometry while adding materials and lighting
 
-- Introduced **deterministic seed locking per index** (`random.seed(42 + idx)`) to ensure reproducibility across runs.
-  - ATTENTION: If you want full randomness again, you should **comment out the seed line** in the script.
-- Preserved rule-based **shape classification** (e.g., "tapered", "dense"), though it now plays a **secondary role** in the pipeline.
-- Automated **image capture** of each generated tower outputs are saved with consistent naming for future prompt alignment.
-- Injected **manually curated prompts** for the first 10 towers to bootstrap prompt-to-form mapping.
+**3. Describe** — GPT-4 produces architectural descriptions for each design
 
 ---
 
-### 🧠 Prompt Classification Logic
+## Results
 
-| Rule                                               | Label        |
-| -------------------------------------------------- | ------------ |
-| `survive_min ≤ 2` and `survive_max ≥ 6`            | fragmented   |
-| `layers ≥ 25` and `birth ≥ 3`                      | tapered      |
-| `voxel_count ≥ 380`                                | dense        |
-| `layers ≥ 20` and `voxel_count < 300`              | eroded       |
-| *(otherwise)*                                      | mixed        |
+| Metric | Value |
+|--------|-------|
+| Unique configurations | 15,000+ |
+| Generation time | ~70 sec/model |
+| Structure preservation | High (Canny edge conditioning) |
 
 ---
 
-### ⚠️ Challenges Faced
+## Quick start
 
-- Rhino’s rendering camera had to be re-centered manually per tower to get usable screenshots
-- Workaround using `rs.Command("-_ViewCaptureToFile")` was used for Camera
+**Generate towers** (requires Rhino):
+```python
+# Run generate.py in Rhino Python editor
+```
 
----
-
-### 🚀 Next Steps
-
-- Build an **external file** to store structured metadata (index, CA params, visual traits, manual prompt)
-- Begin **prompt generalization** phase use GPT-based embedding comparison to expand curated prompts to remaining 90 towers
-- Later: explore model fine-tuning or retrieval-based LLM prompting for consistent generative descriptions
-
-
-![Sample of 100 Variations](images/100variations.png)
+**Add descriptions**:
+```bash
+cp describe/.env.example describe/.env
+# Add your OPENAI_API_KEY and STABILITY_API_KEY
+python describe/analyze.py
+```
 
 ---
 
-# **Aidan – Week 3 Update**
+## Structure
 
-### ✅ Summary of Progress
-
-- Built a new voxelized branching tree generator (`branchingTree_New.py`) to simulate multiple growing trees using 3D grid logic.
-- Implemented a recursive growth algorithm that respects voxel collisions and gradually tapers branch sizes.
-- Added randomness in branching directions and positions to create organic variation across structures.
-- Explored tree clustering effects through randomized tree origins within a voxel grid.
-- Limited maximum recursion depth and grid bounds to control performance and visual clarity.
-
----
-
-### 🌲 Core Script Behavior
-
-- Each tree grows recursively with downward-biased branches.
-- New branches emerge probabilistically based on depth.
-- Voxel grid prevents overlapping cubes and enables natural spacing.
-- Tapering function scales branch thickness as depth increases.
-
-### 🔧 Key Parameters
-
-| Parameter         | Description                             |
-|------------------|-----------------------------------------|
-| `voxel_size`      | Size of each cube voxel                 |
-| `grid_limit`      | Width of 3D grid space                  |
-| `max_recursion`   | Controls tree depth / height            |
-| `taper_amount`    | How much thinner branches become        |
-| `number_of_trees` | How many separate trees to generate     |
+```
+generate.py       — Rhino script, CA tower generation
+describe/
+  analyze.py      — GPT-4 image → text
+  enhance.py      — Stability AI rendering
+output/
+  towers/         — geometry + params
+  renders/        — final images
+  descriptions/   — text labels
+```
 
 ---
 
-### 🖼️ Visual Examples
+## Configuration
 
-| Perspective 1 | Top View |
-|---------------|----------|
-| ![Voxel Trees 1](images/voxelized_trees1.png) | ![Voxel Trees 2](images/voxelized_trees2.png) |
+Edit parameters in `generate.py`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `CELL_SIZE` | 2.0 | Voxel dimensions |
+| `LAYER_HEIGHT` | 3.5 | Floor-to-floor height |
+| `MAX_VOXELS` | 2500 | Density limit |
+| `BIRTH_OPTIONS` | [2, 3] | CA birth rules |
+| `SURV_MIN/MAX` | [1,2] / [8] | CA survival range |
 
 ---
 
+## Sample outputs
 
+![Tower samples with parameters](docs/Tower%20Sample%20Week%202.png)
 
+---
+
+## Authors
+
+Sabri Gokmen, Andrei Vince, Aidan Oh
+
+UNC Charlotte / UNC Chapel Hill
+
+```bibtex
+@inproceedings{gokmen2025tower,
+  title={A Framework for Architectural Geometry Synthesis Using Cellular Automata and Conditioned Diffusion Models},
+  author={Gokmen, Sabri and Vince, Andrei and Oh, Aidan},
+  booktitle={SIGGRAPH Asia 2025 Posters},
+  year={2025}
+}
+```
