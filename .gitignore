@@ -45,3 +45,5 @@ coverage/
 *.sublime-project
 *.sublime-workspace
 
+GeometryImagesRhino/
+**/GeometryImagesRhino/
