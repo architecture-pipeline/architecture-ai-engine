@@ -7,7 +7,7 @@ import shutil
 import math
 
 # --- CONFIG ---
-NUM_VARIATIONS = 10
+NUM_VARIATIONS = 5
 CELL_SIZE = 2.0
 LAYER_HEIGHT = 1.0
 MAX_BASE = 12
@@ -19,7 +19,7 @@ SURV_MIN_OPTIONS = [2, 3]
 SURV_MAX_OPTIONS = [4, 5, 6]
 
 # --- Camera Configuration ---
-CAMERA_DISTANCE_MULTIPLIER = 2.7
+CAMERA_DISTANCE_MULTIPLIER = 2.0
 CAMERA_HORIZONTAL_ANGLE_DEG = 35.0
 CAMERA_TARGET_Z_FACTOR = 0.5
 CAMERA_Z_FACTOR = 0.5
@@ -28,8 +28,9 @@ CAMERA_Z_FACTOR = 0.5
 # --- Grid layout configuration ---
 GRID_SPACING = (MAX_BASE * CELL_SIZE) * 1.5
 
-# --- IMPORTANT: SET YOUR OUTPUT DIRECTORY ---
-ROOT_DIR = "C:\\Users\\aidan\\Documents\\School\\Research\\repos\\architecture-ai-engine\\images_CA_Aidan"
+# --- OUTPUT DIRECTORY ---
+# Set this to your desired output folder (works on any OS)
+ROOT_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "architecture-ai-engine", "GeometryImagesRhino")
 if not os.path.exists(ROOT_DIR):
     os.makedirs(ROOT_DIR)
 
@@ -122,14 +123,20 @@ def capture_view(filepath):
 rs.EnableRedraw(False)
 rs.DeleteObjects(rs.AllObjects())
 
-grid_cols = int(math.ceil(NUM_VARIATIONS**0.5))
-all_tower_layers = []
+# Find the next available tower index
+existing_towers = [d for d in os.listdir(ROOT_DIR) if d.startswith("tower_") and os.path.isdir(os.path.join(ROOT_DIR, d))]
+if existing_towers:
+    max_idx = max(int(t.split("_")[1]) for t in existing_towers)
+    START_IDX = max_idx + 1
+else:
+    START_IDX = 0
 
-for idx in range(NUM_VARIATIONS):
-    layer_name = "T{idx}"
+print(f"Starting from tower {START_IDX:03d}")
+
+for idx in range(START_IDX, START_IDX + NUM_VARIATIONS):
+    layer_name = f"T{idx}"
     if rs.IsLayer(layer_name): rs.PurgeLayer(layer_name)
     rs.AddLayer(layer_name)
-    all_tower_layers.append(layer_name)
 
     cell_centers = []
     current_seed = 42 + idx
@@ -212,7 +219,7 @@ for idx in range(NUM_VARIATIONS):
             smax = random.choice(SURV_MAX_OPTIONS)
 
     if not building_objs:
-        print("Tower {idx:03d} resulted in no geometry. Skipping."); continue
+        print(f"Tower {idx:03d} resulted in no geometry. Skipping."); continue
 
     rs.ObjectLayer(building_objs, layer_name)
 
@@ -220,9 +227,6 @@ for idx in range(NUM_VARIATIONS):
     if bbox:
         move_vector = rs.VectorSubtract((0,0,0),((bbox[0][0]+bbox[6][0])/2,(bbox[0][1]+bbox[6][1])/2,bbox[0][2]))
         rs.MoveObjects(building_objs, move_vector)
-
-    for l in all_tower_layers:
-        if l != layer_name: rs.LayerVisible(l, False)
 
     ground_plane_size = (MAX_BASE*CELL_SIZE)*5.0
     ground_plane = rs.AddPlaneSurface(rs.WorldXYPlane(), ground_plane_size, ground_plane_size)
@@ -259,10 +263,46 @@ for idx in range(NUM_VARIATIONS):
             filepath = os.path.join(tower_dir, "perspective.png")
             capture_view(filepath)
 
-    if ground_plane: rs.DeleteObject(ground_plane)
+            # Capture perspective_opposite (180 degrees rotated)
+            setup_angled_perspective_view(
+                target_coords,
+                cam_dist,
+                building_height,
+                50,
+                CAMERA_TARGET_Z_FACTOR,
+                CAMERA_Z_FACTOR,
+                CAMERA_HORIZONTAL_ANGLE_DEG + 180
+            )
+            filepath = os.path.join(tower_dir, "perspective_opposite.png")
+            capture_view(filepath)
 
-    for l in all_tower_layers:
-        rs.LayerVisible(l, True)
+            # Capture elevation (side view - camera at mid height, looking straight)
+            setup_angled_perspective_view(
+                target_coords,
+                cam_dist,
+                building_height,
+                50,
+                0.5,
+                0.5,
+                90
+            )
+            filepath = os.path.join(tower_dir, "elevation.png")
+            capture_view(filepath)
+
+            # Capture street_level (low angle looking up)
+            setup_angled_perspective_view(
+                target_coords,
+                cam_dist * 1.2,
+                building_height,
+                50,
+                0.4,
+                0.25,
+                135
+            )
+            filepath = os.path.join(tower_dir, "street_level.png")
+            capture_view(filepath)
+
+    if ground_plane: rs.DeleteObject(ground_plane)
 
     output_data = {
         "tower_info": {
@@ -279,18 +319,14 @@ for idx in range(NUM_VARIATIONS):
     with open(os.path.join(tower_dir, "params.json"), "w") as fp:
         json.dump(output_data, fp, indent=2)
 
-    grid_row, grid_col = idx // grid_cols, idx % grid_cols
-    grid_position = (grid_col * GRID_SPACING, grid_row * GRID_SPACING, 0)
-    rs.MoveObjects(building_objs, rs.VectorCreate(grid_position, (0,0,0)))
+    # Clean up memory - delete tower geometry after capturing
+    rs.DeleteObjects(building_objs)
+    if rs.IsLayer(layer_name):
+        rs.PurgeLayer(layer_name)
 
-    dot = rs.AddTextDot(layer_name, grid_position)
-    if dot: rs.ObjectLayer(dot, layer_name)
+    print(f"Generated and captured tower {idx:03d}")
 
-    print("Generated, captured, and placed tower {idx:03d} on layer '{layer_name}'")
-
-rs.Command("_-Zoom _Extents", False)
 rs.EnableRedraw(True)
 
-print("\nProcess complete. Generated {NUM_VARIATIONS} towers in {ROOT_DIR}")
-print("The Rhino scene now contains all variations arranged in a grid.")
-print("You may now save the .3dm file.")
+print(f"\nProcess complete. Generated {NUM_VARIATIONS} towers in {ROOT_DIR}")
+print("Images and params saved. Geometry cleaned from memory.")
