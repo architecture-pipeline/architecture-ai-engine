@@ -3,7 +3,6 @@ import random
 import os
 import time
 import json
-import shutil
 import math
 
 # --- CONFIG ---
@@ -24,9 +23,6 @@ CAMERA_HORIZONTAL_ANGLE_DEG = 35.0
 CAMERA_TARGET_Z_FACTOR = 0.5
 CAMERA_Z_FACTOR = 0.5
 
-
-# --- Grid layout configuration ---
-GRID_SPACING = (MAX_BASE * CELL_SIZE) * 1.5
 
 # --- OUTPUT DIRECTORY ---
 # Set this to your desired output folder (works on any OS)
@@ -72,13 +68,6 @@ def compute_next(g, prev_g, b, smin, smax, z):
             else:
                 nxt[x][y] = 0
     return nxt
-
-def classify_shape(b, smin, smax, layers, vox):
-    if smin <= 2 and smax >= 6: return "fragmented"
-    if layers >= 25 and b >= 3: return "tapered"
-    if vox >= 380: return "dense"
-    if layers >= 20 and vox < 300: return "eroded"
-    return "mixed"
 
 def get_bounding_box_center_coords(bbox_points):
     if not bbox_points or len(bbox_points) < 8: return None
@@ -312,7 +301,7 @@ for idx in range(START_IDX, START_IDX + NUM_VARIATIONS):
             "actual_layers_created": actual_layers_created,
             "total_cells": vox,
             "seed": current_seed,
-            "prompt": "WILL Be pasted from GPT"
+            "prompt": ""
         },
         "cell_centers": cell_centers
     }
