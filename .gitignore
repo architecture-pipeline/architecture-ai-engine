@@ -47,3 +47,5 @@ coverage/
 
 GeometryImagesRhino/
 **/GeometryImagesRhino/
+GeometryImagesRhino.nosync/
+**/GeometryImagesRhino.nosync/
