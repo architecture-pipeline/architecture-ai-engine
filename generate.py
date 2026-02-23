@@ -6,21 +6,20 @@ import json
 import math
 from collections import deque
 
-# --- CONFIG ---
-NUM_VARIATIONS = 5
-CELL_SIZE = 1.0      # x, y dimension
-LAYER_HEIGHT = 2.0   # z dimension (tall voxels)
-GRID_X = 10          # fixed 10x10 base
+# CONFIG
+NUM_VARIATIONS = 15
+CELL_SIZE = 1.0      
+LAYER_HEIGHT = 2.0   
+GRID_X = 10          
 GRID_Y = 10
-GRID_Z = 25          # 25 layers height
+GRID_Z = 25          
 
-# --- Camera Configuration ---
+# Camera Configuration
 CAMERA_DISTANCE_MULTIPLIER = 1.8225
 CAMERA_TARGET_Z_FACTOR = 0.5
 CAMERA_Z_FACTOR = 0.5
 
-
-# --- OUTPUT DIRECTORY ---
+# OUTPUT DIRECTORY
 ROOT_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "architecture-ai-engine", "GeometryImagesRhino.nosync")
 if not os.path.exists(ROOT_DIR):
     os.makedirs(ROOT_DIR)
@@ -65,7 +64,6 @@ def capture_view(filepath):
     time.sleep(0.1)
 
 def ensure_structural_integrity(grid):
-    """Remove any voxels not connected to ground via face-adjacency (6-connectivity BFS)."""
     visited = [[[False]*GRID_Z for _ in range(GRID_Y)] for _ in range(GRID_X)]
     queue = deque()
 
@@ -95,232 +93,85 @@ def ensure_structural_integrity(grid):
     return grid, removed
 
 def generate_tower(seed):
-    """Generate tower: clean stacked zones with directional setbacks, through-cuts, split peaks."""
     random.seed(seed)
-
     voxel_grid = [[[0 for _ in range(GRID_Z)] for _ in range(GRID_Y)] for _ in range(GRID_X)]
+    
+    # 1. Main Core (Forces the fat rectangular top)
+    cw = random.randint(4, 7)
+    cd = random.randint(4, 7)
+    ch = random.randint(20, 25)
+    
+    # Center the core
+    cx = (GRID_X - cw) // 2
+    cy = (GRID_Y - cd) // 2
+    
+    for x in range(cx, cx + cw):
+        for y in range(cy, cy + cd):
+            for z in range(ch):
+                voxel_grid[x][y][z] = 1
 
-    # --- Step 1: Zone heights ---
-    # References show bottom ~40-50% is wide base mass, tower rises from midpoint
-    num_zones = random.randint(2, 4)
-    zones = []
+    # 2. Stepped Base (Creates the wide bottom that shrinks upward)
+    base_h = random.randint(8, 14)
+    current_min_x, current_max_x = 0, GRID_X
+    current_min_y, current_max_y = 0, GRID_Y
+    
+    tier_height = 0
+    for z in range(base_h):
+        # Every 2-4 layers, shrink the bounding box on random sides
+        if tier_height > random.randint(2, 4):
+            # Shrink, but never smaller than the main core
+            if current_min_x < cx and random.random() < 0.6: current_min_x += 1
+            if current_max_x > cx + cw and random.random() < 0.6: current_max_x -= 1
+            if current_min_y < cy and random.random() < 0.6: current_min_y += 1
+            if current_max_y > cy + cd and random.random() < 0.6: current_max_y -= 1
+            tier_height = 0
+            
+        for x in range(current_min_x, current_max_x):
+            for y in range(current_min_y, current_max_y):
+                voxel_grid[x][y][z] = 1
+        tier_height += 1
 
-    # Base (podium) takes 40-50% of height
-    base_layers = random.randint(10, 13)  # 40-52% of 25
+    # 3. Asymmetric Mid-blocks (Breaks perfect symmetry, adds chunkiness)
+    for _ in range(random.randint(1, 3)):
+        bw = random.randint(2, 5)
+        bd = random.randint(2, 5)
+        bh = random.randint(10, ch - 4)
+        
+        # Clamp to the sides of the core
+        bx = cx + random.choice([-2, -1, cw - 2, cw - 1])
+        by = cy + random.choice([-2, -1, cd - 2, cd - 1])
+        
+        bx = max(0, min(bx, GRID_X - bw))
+        by = max(0, min(by, GRID_Y - bd))
+        
+        for x in range(bx, bx + bw):
+            for y in range(by, by + bd):
+                for z in range(bh):
+                    voxel_grid[x][y][z] = 1
 
-    if num_zones == 2:
-        # Simple: big podium + tower
-        zones = [base_layers, GRID_Z - base_layers]
-    elif num_zones == 3:
-        # Podium + mid transition + tower
-        mid_h = random.randint(3, 5)
-        pod_h = base_layers - mid_h
-        pod_h = max(pod_h, 5)
-        mid_h = base_layers - pod_h
-        tower_h = GRID_Z - pod_h - mid_h
-        zones = [pod_h, mid_h, tower_h]
-    else:
-        # 4 zones: podium + 2 mid + tower
-        mid1_h = random.randint(2, 4)
-        mid2_h = random.randint(2, 4)
-        pod_h = base_layers - mid1_h - mid2_h
-        pod_h = max(pod_h, 4)
-        # Recalc mids to fit
-        leftover_base = base_layers - pod_h
-        mid1_h = leftover_base // 2
-        mid2_h = leftover_base - mid1_h
-        tower_h = GRID_Z - pod_h - mid1_h - mid2_h
-        zones = [pod_h, mid1_h, mid2_h, tower_h]
-
-    # --- Step 2: Footprints with composition variety ---
-    #   standard   - wide base, setback tower (classic taper)
-    #   rectangular - minimal setbacks, nearly uniform width throughout
-    comp_type = random.choice(['standard', 'rectangular'])
-
-    footprints = []
-    base_fp = [[1]*GRID_Y for _ in range(GRID_X)]
-    footprints.append(base_fp)
-
-    for i in range(1, len(zones)):
-        prev = footprints[i - 1]
-
-        # Setback amount depends on composition type
-        if comp_type == 'rectangular':
-            sb_type = random.choice(['centered_tiny', 'flush_edge_tiny', 'none'])
-        else:
-            # Standard: directional setbacks
-            r = random.random()
-            if r < 0.35:
-                sb_type = 'flush_edge'
-            elif r < 0.70:
-                sb_type = 'flush_corner'
-            elif r < 0.90:
-                sb_type = 'centered_shrink'
-            else:
-                sb_type = 'centered_double'
-
-        nfp = [[prev[x][y] for y in range(GRID_Y)] for x in range(GRID_X)]
-
-        if sb_type == 'none':
-            pass  # same footprint as reference
-
-        elif sb_type == 'centered_tiny':
-            nfp = [[0]*GRID_Y for _ in range(GRID_X)]
-            for x in range(1, GRID_X - 1):
-                for y in range(1, GRID_Y - 1):
-                    nfp[x][y] = prev[x][y]
-
-        elif sb_type == 'flush_edge_tiny':
-            edge = random.choice(['left', 'right', 'top', 'bottom'])
-            for x in range(GRID_X):
-                for y in range(GRID_Y):
-                    if edge == 'left' and x < 1: nfp[x][y] = 0
-                    elif edge == 'right' and x >= GRID_X - 1: nfp[x][y] = 0
-                    elif edge == 'top' and y >= GRID_Y - 1: nfp[x][y] = 0
-                    elif edge == 'bottom' and y < 1: nfp[x][y] = 0
-
-        elif sb_type == 'flush_edge':
-            edge = random.choice(['left', 'right', 'top', 'bottom'])
-            amt = random.randint(2, 4)
-            for x in range(GRID_X):
-                for y in range(GRID_Y):
-                    if edge == 'left' and x < amt: nfp[x][y] = 0
-                    elif edge == 'right' and x >= GRID_X - amt: nfp[x][y] = 0
-                    elif edge == 'top' and y >= GRID_Y - amt: nfp[x][y] = 0
-                    elif edge == 'bottom' and y < amt: nfp[x][y] = 0
-
-        elif sb_type == 'flush_corner':
-            corner = random.choice(['NE', 'NW', 'SE', 'SW'])
-            ax = random.randint(1, 3)
-            ay = random.randint(1, 3)
-            for x in range(GRID_X):
-                for y in range(GRID_Y):
-                    if corner == 'NE' and (x >= GRID_X - ax or y >= GRID_Y - ay):
-                        nfp[x][y] = 0
-                    elif corner == 'NW' and (x < ax or y >= GRID_Y - ay):
-                        nfp[x][y] = 0
-                    elif corner == 'SE' and (x >= GRID_X - ax or y < ay):
-                        nfp[x][y] = 0
-                    elif corner == 'SW' and (x < ax or y < ay):
-                        nfp[x][y] = 0
-
-        elif sb_type == 'centered_shrink':
-            nfp = [[0]*GRID_Y for _ in range(GRID_X)]
-            for x in range(1, GRID_X - 1):
-                for y in range(1, GRID_Y - 1):
-                    nfp[x][y] = prev[x][y]
-
-        elif sb_type == 'centered_double':
-            nfp = [[0]*GRID_Y for _ in range(GRID_X)]
-            for x in range(2, GRID_X - 2):
-                for y in range(2, GRID_Y - 2):
-                    nfp[x][y] = prev[x][y]
-
-        footprints.append(nfp)
-
-    # Fill voxel grid with zone footprints
-    current_z = 0
-    zone_transitions = []
-    for zone_idx, zone_height in enumerate(zones):
-        fp = footprints[min(zone_idx, len(footprints) - 1)]
-        for layer in range(zone_height):
-            z = current_z + layer
-            if z >= GRID_Z:
-                break
-            for x in range(GRID_X):
-                for y in range(GRID_Y):
-                    if fp[x][y] == 1:
-                        voxel_grid[x][y][z] = 1
-        zone_transitions.append(current_z)
-        current_z += zone_height
-
-    # --- Step 3: Through-cut with optional split peaks ---
-    if random.random() < 0.60:
+    # 4. Vertical Subtraction (The deep split/trench)
+    if random.random() < 0.85:
+        slot_w = random.randint(1, 2)
+        slot_start_z = random.randint(base_h - 2, base_h + 3)
         axis = random.choice(['x', 'y'])
-        if axis == 'x':
-            pos = random.randint(3, GRID_X - 4)
-        else:
-            pos = random.randint(3, GRID_Y - 4)
-
-        # Through-cut start: sometimes from ground, sometimes above podium
-        if random.random() < 0.5:
-            ch_start = 0
-        else:
-            ch_start = zones[0]
-
-        # Carve the through-cut
-        if axis == 'x':
-            for z in range(ch_start, GRID_Z):
+        
+        if axis == 'x' and cw >= 4:
+            # Cut through X axis
+            sx = cx + random.randint(1, cw - slot_w - 1)
+            for x in range(sx, sx + slot_w):
                 for y in range(GRID_Y):
-                    voxel_grid[pos][y][z] = 0
-        else:
-            for z in range(ch_start, GRID_Z):
+                    for z in range(slot_start_z, GRID_Z):
+                        voxel_grid[x][y][z] = 0
+        elif axis == 'y' and cd >= 4:
+            # Cut through Y axis
+            sy = cy + random.randint(1, cd - slot_w - 1)
+            for y in range(sy, sy + slot_w):
                 for x in range(GRID_X):
-                    voxel_grid[x][pos][z] = 0
-
-        # Split peaks: one side shorter than the other (45% when cut exists)
-        if random.random() < 0.45:
-            cut_layers = random.randint(3, GRID_Z // 3)
-            if axis == 'x':
-                if random.random() < 0.5:
-                    side_x = range(0, pos)
-                else:
-                    side_x = range(pos + 1, GRID_X)
-                for z in range(GRID_Z - cut_layers, GRID_Z):
-                    for x in side_x:
-                        for y in range(GRID_Y):
-                            voxel_grid[x][y][z] = 0
-            else:
-                if random.random() < 0.5:
-                    side_y = range(0, pos)
-                else:
-                    side_y = range(pos + 1, GRID_Y)
-                for z in range(GRID_Z - cut_layers, GRID_Z):
-                    for x in range(GRID_X):
-                        for y in side_y:
-                            voxel_grid[x][y][z] = 0
-
-    # --- Step 4: Optional large void on a face ---
-    if random.random() < 0.30:
-        face = random.choice(['x0', 'x_max', 'y0', 'y_max'])
-        void_w = random.randint(3, 5)
-        void_d = random.randint(2, 3)
-        void_start = random.randint(GRID_Z // 5, GRID_Z // 2)
-        void_height = random.randint(3, 6)
-
-        if face == 'x0':
-            vx, vy = 0, random.randint(0, max(0, GRID_Y - void_d))
-        elif face == 'x_max':
-            vx, vy = GRID_X - void_w, random.randint(0, max(0, GRID_Y - void_d))
-        elif face == 'y0':
-            vx, vy = random.randint(0, max(0, GRID_X - void_w)), 0
-        else:
-            vx, vy = random.randint(0, max(0, GRID_X - void_w)), GRID_Y - void_d
-
-        for z in range(void_start, min(void_start + void_height, GRID_Z)):
-            for dx in range(void_w):
-                for dy in range(void_d):
-                    nx, ny = vx + dx, vy + dy
-                    if 0 <= nx < GRID_X and 0 <= ny < GRID_Y:
-                        voxel_grid[nx][ny][z] = 0
-
-    # --- Step 5: Optional recessed band at zone transition ---
-    if random.random() < 0.25 and len(zone_transitions) > 1:
-        band_z = zone_transitions[1]
-        if 1 <= band_z < GRID_Z:
-            for x in range(GRID_X):
-                for y in range(GRID_Y):
-                    if x == 0 or x == GRID_X - 1 or y == 0 or y == GRID_Y - 1:
-                        voxel_grid[x][y][band_z] = 0
-
-    # --- Step 6: Structural integrity ---
-    voxel_grid, removed = ensure_structural_integrity(voxel_grid)
-    if removed > 0:
-        print(f"  Structural check: removed {removed} disconnected voxels")
+                    for z in range(slot_start_z, GRID_Z):
+                        voxel_grid[x][y][z] = 0
 
     return voxel_grid
-
-# --- MAIN ---
+# MAIN
 rs.EnableRedraw(False)
 rs.DeleteObjects(rs.AllObjects())
 
@@ -441,6 +292,4 @@ for idx in range(START_IDX, START_IDX + NUM_VARIATIONS):
     print(f"Generated and captured tower {idx:03d} with {vox} voxels")
 
 rs.EnableRedraw(True)
-
 print(f"\nProcess complete. Generated {NUM_VARIATIONS} towers in {ROOT_DIR}")
-print("Images and params saved. Geometry cleaned from memory.")
